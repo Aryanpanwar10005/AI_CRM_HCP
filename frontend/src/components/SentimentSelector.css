@@ -1,0 +1,49 @@
+.sentiment-selector {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.5rem 0;
+  transition: background-color 1.5s;
+  border-radius: 6px;
+}
+
+.sentiment-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.sentiment-option input {
+  display: none;
+}
+
+.radio-custom {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  position: relative;
+  transition: border-color 0.2s;
+}
+
+.sentiment-option input:checked + .radio-custom {
+  border-color: var(--accent-color);
+}
+
+.sentiment-option input:checked + .radio-custom::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  background: var(--accent-color);
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sentiment-label {
+  color: var(--color-text);
+  font-weight: 500;
+}
