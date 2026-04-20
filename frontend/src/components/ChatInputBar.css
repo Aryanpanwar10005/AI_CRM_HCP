@@ -1,0 +1,35 @@
+.chat-input-bar {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.chat-input-bar textarea {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  resize: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+  max-height: 120px;
+  background: white;
+}
+
+.log-btn {
+  background: #1A1A2E;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  height: 42px;
+}
+
+.log-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
