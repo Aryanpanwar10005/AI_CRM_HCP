@@ -1,108 +1,80 @@
-# 🛡️ AI-First CRM HCP Module
+# AI-First CRM: HCP Interaction Logging
 
-### PhRMA-Compliant Interaction Logging & Strategic AI Orchestration
+Pharma field reps lose time after every doctor visit retyping notes into CRM forms. In this project a rep can log a healthcare professional (HCP) visit either by filling in a form or by describing it in a chat, and the two stay in sync. The chat fills in the form fields, and the form's current values go back to the assistant with every message, so a follow-up like "actually it was a call" can correct the record that was just logged.
 
-[![React](https://img.shields.io/badge/React-18.3-blue?logo=react)](https://reactjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-Agentic-orange)](https://langchain-ai.github.io/langgraph/)
-[![Groq](https://img.shields.io/badge/Groq-Inference-f5ba31)](https://groq.com/)
-
-A premium, high-fidelity CRM module designed for pharmaceutical field representatives. This solution offers **Dual-Mode Parity**, allowing reps to log interactions via a pixel-perfect structured form or a conversational AI assistant powered by LangGraph.
+Case study: [aryanpanwar.in/case-studies/ai-first-crm-hcp](https://aryanpanwar.in/case-studies/ai-first-crm-hcp)
 
 ---
 
-## 🌟 Key Features
+## What it does
 
-### 1. Dual-Mode Logging Parity
+- **Form or chat, kept in sync.** Fields the assistant fills in are highlighted for 1.5 seconds so the rep can see what changed. The form stays editable, so any value the AI suggests can be corrected by hand before saving.
+- **Five assistant actions**, built as LangGraph tools:
 
-- **Total Flexibility**: Switch between manual form entry and AI-driven chat at any time.
-- **Bi-directional Sync**: Changes made in chat reflect instantly on the form with a **1.5s blue-pulse animation** for visual confirmation.
-- **Manual Override**: The form remains fully interactive; AI-suggested values can be manually corrected.
+| Tool | What it does | Uses an LLM? |
+| --- | --- | --- |
+| `log_interaction` | Pulls 10 fields (HCP name, date, time, mode, product, sentiment, materials, topics, outcome, follow-up notes) out of a free-text note, matches the HCP name against the database and saves the interaction. Example: "Met Dr. Patel today…" | Yes, Llama 3.1 8B |
+| `edit_interaction` | Changes only the fields the rep mentions, e.g. "Change sentiment to Positive". | Yes, Llama 3.1 8B |
+| `get_hcp_profile` | Returns specialty, hospital, city and the last 5 interactions. | No, SQL only |
+| `compliance_check` | Counts this calendar month's in-person meetings with the HCP against a limit of 3. | No, SQL only |
+| `next_best_action` | Reads the last 5 interactions and suggests one next step in two sentences or fewer. | Yes, Llama 3.3 70B |
 
-### 2. Agentic 5-Tool Architecture (LangGraph)
+- **Compliance checks based on the PhRMA Code.** There are two simple checks: the monthly in-person visit limit above, and a checkbox ("I confirm compliance with PhRMA guidelines") that the rep has to tick before the form will save. The limit of 3 is a rule set in `backend/tools.py`, not a number taken from the Code. Questions like "Can I visit Dr. Verma again this month?" are answered straight from SQL when the message names a known HCP, without calling the LLM.
+- **Plain-language replies.** The backend strips JSON, code blocks and internal field names from the assistant's replies before they reach the rep.
+- **Dashboard.** A list of recent interactions, newest first.
 
-The AI Assistant operates on a **stateful state graph** where the state persists across the conversation loop, allowing contextual corrections.
+## How it works
 
-#### 🧠 Tool 1: `log_interaction`
+1. The React app keeps the form and the chat in one Redux store.
+2. A chat message goes to `POST /api/chat` together with the current form values.
+3. FastAPI runs a LangGraph graph with an agent node (Llama 3.1 8B with the five tools bound) and a tools node. The agent picks a tool, the tool runs, and the agent writes a short plain-text reply.
+4. The response carries `form_updates`. Redux applies them to the form and highlights the changed fields.
+5. Saving the form calls `POST /api/interactions`.
 
-- **Role**: Captures a new HCP interaction from free-form rep input.
-- **Logic**: Performs entity extraction using `llama-3.1-8b-instant` to fill 11 structured fields. Fuzzy-matches `hcp_name` to database records.
-- **Trigger**: _"Visited Dr. Sharma…"_, _"Met with Dr. Patel today..."_
+## Tech stack
 
-#### ✏️ Tool 2: `edit_interaction`
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 18, Redux Toolkit, React Router, Vite, Lucide icons |
+| Backend | Python, FastAPI, SQLAlchemy |
+| Agent | LangGraph, LangChain (Groq) |
+| Models | Groq-hosted `llama-3.1-8b-instant` (extraction, tool routing) and `llama-3.3-70b-versatile` (next best action) |
+| Database | MySQL, or SQLite when `DATABASE_URL` isn't set |
 
-- **Role**: Contextual modification of already-logged data.
-- **Logic**: Reads `current_interaction_id` from state. LLM returns **ONLY** explicitly changed fields to prevent accidental overwrites.
-- **Trigger**: _"Actually it was a call, not a visit"_, _"Change sentiment to Positive."_
+## API endpoints
 
-#### 👤 Tool 3: `get_hcp_profile`
+| Endpoint | Description |
+| --- | --- |
+| `POST /api/chat` | Runs the LangGraph agent on a chat message |
+| `GET /api/interactions` | Interaction history, newest first |
+| `POST /api/interactions` | Saves the form |
+| `PUT /api/interactions/{id}` | Updates an interaction |
+| `DELETE /api/interactions/{id}` | Deletes an interaction |
+| `GET /api/hcps`, `GET /api/hcps/{id}` | HCP directory |
+| `GET /api/followups` | Pending follow-ups |
+| `PUT /api/followups/{id}/complete` | Marks a follow-up done |
 
-- **Role**: Retrieves account history and profile.
-- **Logic**: **Zero LLM (Pure SQL)**. Returns details, last 5 interactions, and pending follow-ups.
-- **Trigger**: _"Show me Dr. Sharma's history"_, _"What's Dr. Patel's specialty?"_
+## Running it locally
 
-#### ⚖️ Tool 4: `compliance_check`
+### 1. Environment
 
-- **Role**: Verifies PhRMA visit limits.
-- **Logic**: **Zero LLM (Pure SQL)**. Counts visits in the current calendar month vs. the **limit of 3 visits/month**.
-- **Trigger**: _"Can I visit Dr. Verma again this month?"_
-
-#### 🎯 Tool 5: `next_best_action`
-
-- **Role**: Strategic recommendation engine.
-- **Logic**: Deep reasoning using **llama-3.3-70b-versatile**. Analyzes interaction history to generate specific product-based strategies.
-- **Trigger**: _"What should I do next with Dr. Verma?"_
-
----
-
-## 🛠️ Tech Stack & Architecture
-
-| Layer             | Technology                                           |
-| ----------------- | ---------------------------------------------------- |
-| **Frontend**      | React 18, Redux Toolkit, Lucide Icons                |
-| **Backend**       | Python 3.10+, FastAPI, SQLAlchemy                    |
-| **Orchestration** | LangGraph (Stateful Agent Workflow)                  |
-| **LLM Inference** | Groq (Llama 3.1 8B Primary, Llama 3.3 70B Secondary) |
-| **Database**      | MySQL (Primary), SQLite (Auto-Fallback)              |
-
-> [!IMPORTANT]
-> **Model Substitution Note**: As of Oct 8, 2025, `gemma2-9b-it` has been substituted with `llama-3.1-8b-instant` for primary tasks, and `llama-3.3-70b-versatile` is utilized for high-reasoning strategy.
-
----
-
-## 📡 API Endpoints
-
-| Method | Endpoint                 | Description                             |
-| ------ | ------------------------ | --------------------------------------- |
-| `POST` | `/api/chat`              | Main AI endpoint — runs LangGraph agent |
-| `GET`  | `/api/interactions`      | Interaction history (Newest first)      |
-| `POST` | `/api/interactions`      | Direct form save                        |
-| `GET`  | `/api/hcps`              | HCP directory lookup                    |
-| `GET`  | `/api/compliance/{name}` | Direct compliance check endpoint        |
-
----
-
-## 🚀 Setup & Running Locally
-
-### 1. Environment Configuration
-
-Create a `.env` file in the `backend/` directory:
+Copy `backend/.env.example` to `backend/.env` and fill it in:
 
 ```env
 GROQ_API_KEY=your_key_here
 GROQ_MODEL_PRIMARY=llama-3.1-8b-instant
 GROQ_MODEL_SECONDARY=llama-3.3-70b-versatile
 DATABASE_URL=mysql+mysqlconnector://root@localhost/crm_hcp
-# Fallback: sqlite:///./crm.db
+# Or use SQLite: sqlite:///./crm_hcp.db
 ```
 
-### 2. Installation & Seed
+### 2. Install, seed and run
 
 ```bash
 # Backend
 cd backend
 pip install -r requirements.txt
-python seed.py  # Initializes Dr. Sharma, Dr. Patel, and Dr. Verma
+python seed.py  # adds 3 sample HCPs, 5 interactions and 2 follow-ups
 uvicorn main:app --reload --port 8000
 
 # Frontend
@@ -111,25 +83,22 @@ npm install
 npm run dev
 ```
 
+There's also a `docker-compose.yml` that runs MySQL, the backend and the frontend together (`docker compose up --build`). It still needs `backend/.env` to exist.
+
+## Sample data
+
+| HCP | Specialty | Hospital, city |
+| --- | --- | --- |
+| Dr. Meera Sharma | Cardiologist | City Hospital, New Delhi |
+| Dr. Rajesh Patel | General Practitioner | City Clinic, Mumbai |
+| Dr. Anita Verma | Endocrinologist | Lakeside Clinic, Bangalore |
+
+All names here are fictional placeholders.
+
+## Status
+
+This is a working prototype. It runs locally against seeded sample data. It has no user authentication, and the only deployment setup in the repo is the local Docker Compose file.
+
 ---
 
-## 📊 Sample Data (seed.py)
-
-| HCP              | Specialty            | Hospital        | City      |
-| ---------------- | -------------------- | --------------- | --------- |
-| Dr. Meera Sharma | Cardiologist         | Apollo Hospital | New Delhi |
-| Dr. Rajesh Patel | General Practitioner | City Clinic     | Mumbai    |
-| Dr. Anita Verma  | Endocrinologist      | Max Hospital    | Bangalore |
-
----
-
-## 🎬 Video Walkthrough & Submission
-
-**Submission Link**: [https://forms.gle/NFXPou3mgrB4Px1u5](https://forms.gle/NFXPou3mgrB4Px1u5)
-
-The 10–15 minute video covers:
-
-1. Live demo of all **5 LangGraph tools** functioning via chat.
-2. Architecture explanation — how chat input flows into Redux form updates.
-3. Code walkthrough — `agent.py` (StateGraph) and `tools.py` (SQL vs LLM logic).
-4. PhRMA compliance logic and strategic recommendation reasoning.
+Built by [Aryan Panwar](https://aryanpanwar.in).
